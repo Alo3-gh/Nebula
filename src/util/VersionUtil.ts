@@ -136,4 +136,37 @@ export class VersionUtil {
         return !stable ? fabricLoaderMeta[0].version : fabricLoaderMeta.find(({ stable }) => stable)!.version
     }
 
+    // -------------------------------
+    // NeoForge
+
+    public static async getNeoForgeVersions(): Promise<string[]> {
+        const response = await got.get('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml').text()
+
+        const matches = response.match(/<version>([^<]+)<\/version>/g) ?? []
+        return matches
+            .map(val => val.replace('<version>', '').replace('</version>', ''))
+            .filter(val => /^\d+\.\d+\.\d+/.test(val))
+    }
+
+    public static async getPromotedNeoForgeVersion(minecraftVersion: MinecraftVersion, promotion: string): Promise<string> {
+        const versions = await this.getNeoForgeVersions()
+        const revision = minecraftVersion.getRevision()
+        const fullPrefix = revision != null ? `${minecraftVersion.getMinor()}.${revision}.` : `${minecraftVersion.getMinor()}.`
+        let candidates = versions.filter(v => v.startsWith(fullPrefix))
+        if (candidates.length === 0) {
+            candidates = versions.filter(v => v.startsWith(`${minecraftVersion.getMinor()}.`))
+        }
+        if(candidates.length === 0) {
+            throw new Error(`No NeoForge versions found for Minecraft ${minecraftVersion}.`)
+        }
+
+        // NeoForge doesn't expose "recommended" like forge promotions.
+        // For now, map both recommended/latest to newest available patch in the MC line.
+        const requested = promotion.toLowerCase()
+        if (!['latest', 'recommended'].includes(requested)) {
+            return promotion
+        }
+        return candidates[candidates.length - 1]
+    }
+
 }

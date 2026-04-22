@@ -1,4 +1,5 @@
 import { Server } from 'helios-distribution-types'
+import { MinecraftVersion } from '../../util/MinecraftVersion.js'
 
 export interface UntrackedFilesOption {
     /**
@@ -16,6 +17,28 @@ export interface ServerMetaOptions {
     version?: string
     forgeVersion?: string
     fabricVersion?: string
+    neoforgeVersion?: string
+}
+
+function inferJavaOptions(version: string): NonNullable<Server['javaOptions']> {
+    const mcVersion = new MinecraftVersion(version)
+    let major: number
+
+    // Forward-compat path for new Minecraft major streams used by this workspace.
+    if (mcVersion.getMajor() >= 26) {
+        major = 25
+    } else if (mcVersion.isGreaterThanOrEqualTo(new MinecraftVersion('1.20.5'))) {
+        major = 21
+    } else if (mcVersion.isGreaterThanOrEqualTo(new MinecraftVersion('1.18'))) {
+        major = 17
+    } else {
+        major = 8
+    }
+
+    return {
+        supported: `>=${major} <${major + 1}`,
+        suggestedMajor: major
+    }
 }
 
 export function getDefaultServerMeta(id: string, version: string, options?: ServerMetaOptions): ServerMeta {
@@ -33,7 +56,8 @@ export function getDefaultServerMeta(id: string, version: string, options?: Serv
                 largeImageKey: '<FILL IN OR REMOVE DISCORD OBJECT>'
             },
             mainServer: false,
-            autoconnect: false
+            autoconnect: false,
+            javaOptions: inferJavaOptions(version)
         }
     }
 
@@ -48,6 +72,13 @@ export function getDefaultServerMeta(id: string, version: string, options?: Serv
         servMeta.meta.description = `${servMeta.meta.description} (Fabric v${options.fabricVersion})`
         servMeta.fabric = {
             version: options.fabricVersion
+        }
+    }
+
+    if(options?.neoforgeVersion) {
+        servMeta.meta.description = `${servMeta.meta.description} (NeoForge v${options.neoforgeVersion})`
+        servMeta.neoforge = {
+            version: options.neoforgeVersion
         }
     }
 
@@ -92,6 +123,17 @@ export interface ServerMeta {
         /**
          * The fabric loader version. This does NOT include the minecraft version.
          * Ex. 0.14.18
+         */
+        version: string
+    }
+
+    /**
+     * Properties related to NeoForge.
+     */
+    neoforge?: {
+        /**
+         * The neoforge version. This does NOT include the minecraft version.
+         * Ex. 20.2.86
          */
         version: string
     }

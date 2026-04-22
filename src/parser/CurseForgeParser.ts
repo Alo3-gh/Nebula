@@ -38,6 +38,10 @@ export interface CurseForgeModResponse {
         gameId: number
         name: string
         slug: string
+        classId?: number
+        links?: {
+            websiteUrl?: string
+        }
         // There are more fields that we don't use right now.
     }
 }
@@ -57,13 +61,57 @@ export interface CurseForgeModFileResponse {
 
 export class CurseForgeParser {
 
-    private static cfClient = got.extend({
-        prefixUrl: 'https://api.curseforge.com/v1',
-        responseType: 'json',
-        headers: {
-            'X-API-KEY': '$2a$10$JL4kTO/N/oXIM6o3uTYC3eLxGrOI4BIAqpX4vAFeIPoXiTtagidkK'
+    private static resolveMinecraftProjectSection(classId: number | undefined): string {
+        // Known top-level Minecraft sections on CurseForge.
+        // Fallback keeps previous behavior for unknown classes.
+        switch (classId) {
+            case 6:
+                return 'mc-mods'
+            case 12:
+                return 'texture-packs'
+            case 17:
+                return 'worlds'
+            case 4546:
+                return 'modpacks'
+            case 6945:
+                return 'data-packs'
+            default:
+                return 'mc-mods'
         }
-    })
+    }
+
+    private static buildProjectDownloadPageUrl(modInfo: CurseForgeModResponse['data'], fileId: number): string {
+        const websiteUrl = modInfo.links?.websiteUrl?.replace(/\/+$/, '')
+        if (websiteUrl != null && websiteUrl.length > 0) {
+            return `${websiteUrl}/download/${fileId}`
+        }
+
+        const section = CurseForgeParser.resolveMinecraftProjectSection(modInfo.classId)
+        return `https://www.curseforge.com/minecraft/${section}/${modInfo.slug}/download/${fileId}`
+    }
+
+    private static cfClient: ReturnType<typeof got.extend> | null = null
+
+    private static getCfClient(): ReturnType<typeof got.extend> {
+        if (CurseForgeParser.cfClient != null) {
+            return CurseForgeParser.cfClient
+        }
+
+        const apiKey = process.env.CURSEFORGE_API_KEY
+        if (apiKey == null || apiKey.trim().length === 0) {
+            throw new Error('Missing CURSEFORGE_API_KEY in .env for CurseForge API access.')
+        }
+
+        CurseForgeParser.cfClient = got.extend({
+            prefixUrl: 'https://api.curseforge.com/v1',
+            responseType: 'json',
+            headers: {
+                'X-API-KEY': apiKey
+            }
+        })
+
+        return CurseForgeParser.cfClient
+    }
 
     private modpackDir: string
     private zipPath: string
@@ -103,13 +151,15 @@ export class CurseForgeParser {
         if(createServerResult.modContainer) {
             const requiredPath = resolve(createServerResult.modContainer, ToggleableNamespace.REQUIRED)
             const optionalPath = resolve(createServerResult.modContainer, ToggleableNamespace.OPTIONAL_ON)
+            await mkdirs(requiredPath)
+            await mkdirs(optionalPath)
 
             const disallowedFiles: { name: string, fileName: string, url: string }[] = []
 
             // Download mods
             for(const file of manifest.files) {
                 log.debug(`Processing - Mod: ${file.projectID}, File: ${file.fileID}`)
-                const fileInfo = (await CurseForgeParser.cfClient.get<CurseForgeModFileResponse>(`mods/${file.projectID}/files/${file.fileID}`)).body
+                const fileInfo = (await CurseForgeParser.getCfClient().get(`mods/${file.projectID}/files/${file.fileID}`) as { body: CurseForgeModFileResponse }).body
                 log.debug(`Downloading ${fileInfo.data.fileName}`)
                 
                 let dir: string
@@ -130,11 +180,11 @@ export class CurseForgeParser {
                 if(thirdPartyDisallowed) {
 
                     log.warn(`${fileInfo.data.fileName} is not available for 3rd-party download through the curseforge API!`)
-                    const modInfo = (await CurseForgeParser.cfClient.get<CurseForgeModResponse>(`mods/${file.projectID}`)).body
+                    const modInfo = (await CurseForgeParser.getCfClient().get(`mods/${file.projectID}`) as { body: CurseForgeModResponse }).body
                     disallowedFiles.push({
                         name: modInfo.data.name,
                         fileName: fileInfo.data.fileName,
-                        url: `https://www.curseforge.com/minecraft/mc-mods/${modInfo.data.slug}/download/${file.fileID}`
+                        url: CurseForgeParser.buildProjectDownloadPageUrl(modInfo.data, file.fileID)
                     })
 
                 } else {

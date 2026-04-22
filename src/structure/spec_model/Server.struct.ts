@@ -13,6 +13,8 @@ import { MinecraftVersion } from '../../util/MinecraftVersion.js'
 import { addSchemaToObject, SchemaTypes } from '../../util/SchemaUtil.js'
 import { isValidUrl } from '../../util/StringUtils.js'
 import { FabricResolver } from '../../resolver/fabric/Fabric.resolver.js'
+import { NeoForgeResolver } from '../../resolver/neoforge/NeoForge.resolver.js'
+import { NeoForgeModStructure } from './module/NeoForgeMod.struct.js'
 
 export interface CreateServerResult {
     modContainer?: string
@@ -56,6 +58,7 @@ export class ServerStructure extends BaseModelStructure<Server> {
             version?: string
             forgeVersion?: string
             fabricVersion?: string
+            neoforgeVersion?: string
         }
     ): Promise<CreateServerResult | null> {
         const effectiveId = ServerStructure.getEffectiveId(id, minecraftVersion)
@@ -99,6 +102,19 @@ export class ServerStructure extends BaseModelStructure<Server> {
             await fms.init()
             modContainer = fms.getContainerDirectory()
             serverMetaOpts.fabricVersion = options.fabricVersion
+        }
+
+        if (options.neoforgeVersion != null) {
+            const nms = new NeoForgeModStructure(
+                absoluteServerRoot,
+                relativeServerRoot,
+                this.baseUrl,
+                minecraftVersion,
+                []
+            )
+            await nms.init()
+            modContainer = nms.getContainerDirectory()
+            serverMetaOpts.neoforgeVersion = options.neoforgeVersion
         }
 
         const serverMeta: ServerMeta = addSchemaToObject(
@@ -219,6 +235,28 @@ export class ServerStructure extends BaseModelStructure<Server> {
 
                     const fabricModModules = await fabricModStruct.getSpecModel()
                     modules.push(...fabricModModules)
+                }
+
+                if(serverMeta.neoforge) {
+                    const neoforgeResolver = new NeoForgeResolver(
+                        dirname(this.containerDirectory),
+                        '',
+                        this.baseUrl,
+                        serverMeta.neoforge.version,
+                        minecraftVersion
+                    )
+                    const neoforgeModule = await neoforgeResolver.getModule()
+                    modules.push(neoforgeModule)
+
+                    const neoforgeModStruct = new NeoForgeModStructure(
+                        absoluteServerRoot,
+                        relativeServerRoot,
+                        this.baseUrl,
+                        minecraftVersion,
+                        untrackedFiles
+                    )
+                    const neoforgeModModules = await neoforgeModStruct.getSpecModel()
+                    modules.push(...neoforgeModModules)
                 }
 
                 const libraryStruct = new LibraryStructure(absoluteServerRoot, relativeServerRoot, this.baseUrl, minecraftVersion, untrackedFiles)
