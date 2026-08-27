@@ -233,7 +233,7 @@ Ex.
   * `libraries` All modules of type `Library`
   * `forgemods` All modules of type `ForgeMod`.
   * `fabricmods` All modules of type `FabricMod`.
-  * `neoforgemods` NeoForge modules (mapped to `ForgeMod` for launcher compatibility).
+  * `neoforgemods` NeoForge modules emitted as `NeoForgeMod`; compatible launchers store them separately from Forge and instance files.
     * This is a directory of toggleable modules. See the note below.
   * `TestServer-1.12.2.png` Server icon file.
 

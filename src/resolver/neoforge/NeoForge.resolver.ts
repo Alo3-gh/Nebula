@@ -64,7 +64,7 @@ export class NeoForgeResolver extends BaseResolver {
             installerOk = await this.isValidJar(installerPath)
         }
         if (!installerOk) {
-            throw new Error(`NeoForge installer could not be downloaded as a valid jar from maven.neoforged.net. The host may be blocked in your network and require proxy access.`)
+            throw new Error('NeoForge installer could not be downloaded as a valid jar from maven.neoforged.net. The host may be blocked in your network and require proxy access.')
         }
 
         const installRoot = join(this.repoStructure.getCacheDirectory(), 'neoforge', this.artifactVersion)
@@ -181,7 +181,7 @@ export class NeoForgeResolver extends BaseResolver {
     }
 
     // modern-only implementation for current integration target
-    public isForVersion(version: MinecraftVersion, _libraryVersion: string): boolean {
+    public isForVersion(version: MinecraftVersion): boolean {
         return version.isGreaterThanOrEqualTo(new MinecraftVersion('1.20.1'))
     }
 

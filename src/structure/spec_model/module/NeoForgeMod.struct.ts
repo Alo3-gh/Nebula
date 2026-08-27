@@ -7,6 +7,12 @@ import { MinecraftVersion } from '../../../util/MinecraftVersion.js'
 import { BaseModStructure } from './Mod.struct.js'
 import { UntrackedFilesOption } from '../../../model/nebula/ServerMeta.js'
 
+/**
+ * helios-distribution-types does not yet expose NeoForgeMod. Keep the wire
+ * value local until the shared package publishes the new enum member.
+ */
+const NEOFORGE_MOD_TYPE = 'NeoForgeMod' as Type
+
 export class NeoForgeModStructure extends BaseModStructure<ModsToml> {
 
     public static readonly IMPLEMENTATION_VERSION_REGEX = /^Implementation-Version: (.+)[\r\n]/
@@ -18,11 +24,10 @@ export class NeoForgeModStructure extends BaseModStructure<ModsToml> {
         minecraftVersion: MinecraftVersion,
         untrackedFiles: UntrackedFilesOption[]
     ) {
-        // NeoForge 1.20.3+ no longer supports loading distribution mods through
-        // FML's Maven mod list. Keep these as managed files so Helios places
-        // them in the instance's normal `mods` directory, where NeoForge's
-        // standard mods-folder locator can discover service and JarJar mods.
-        super(absoluteRoot, relativeRoot, 'neoforgemods', baseUrl, minecraftVersion, Type.File, untrackedFiles)
+        // NeoForge pack mods have their own distribution type. AwesomeLauncher
+        // stores them centrally and exposes only the active server's modules to
+        // FML through a version-specific candidate locator.
+        super(absoluteRoot, relativeRoot, 'neoforgemods', baseUrl, minecraftVersion, NEOFORGE_MOD_TYPE, untrackedFiles)
     }
 
     public getLoggerName(): string {
@@ -31,9 +36,7 @@ export class NeoForgeModStructure extends BaseModStructure<ModsToml> {
 
     protected async getModuleId(name: string, _path: string): Promise<string> {
         const fmData = await this.getModMetadata(name, _path)
-        // Type.File modules are installed by artifact.path and are not resolved
-        // through Maven. Do not use TypeMetadata's undefined File extension.
-        return `generated.neoforge:${fmData.mods[0].modId}:${fmData.mods[0].version}`
+        return `generated.neoforge:${fmData.mods[0].modId}:${fmData.mods[0].version}@jar`
     }
 
     protected async getModuleName(name: string, _path: string): Promise<string> {
@@ -98,7 +101,9 @@ export class NeoForgeModStructure extends BaseModStructure<ModsToml> {
         return this.modMetadata[name]
     }
 
-    protected async getModulePath(name: string): Promise<string> {
-        return `mods/${name}`
+    protected async getModulePath(): Promise<null> {
+        // Let Helios derive a collision-resistant Maven path below
+        // common/mods/neoforge instead of writing into the instance.
+        return null
     }
 }
