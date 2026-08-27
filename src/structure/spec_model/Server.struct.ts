@@ -24,7 +24,8 @@ export interface CreateServerResult {
 
 export class ServerStructure extends BaseModelStructure<Server> {
 
-    private readonly ID_REGEX = /(.+-(.+)$)/
+    private readonly ID_REGEX = /^(.+)-(\d+\.\d+(?:\.\d+)?)$/
+    private readonly MINECRAFT_VERSION_NAME_REGEX = /minecraft\s+(\d+\.\d+(?:\.\d+)?)/i
     private readonly SERVER_META_FILE = 'servermeta.json'
 
     constructor(
@@ -149,16 +150,15 @@ export class ServerStructure extends BaseModelStructure<Server> {
 
                 this.logger.info(`Beginning processing of ${file}.`)
 
-                const match = this.ID_REGEX.exec(file)
-                if (match == null) {
-                    this.logger.warn(`Server directory ${file} does not match the defined standard.`)
-                    this.logger.warn('All server ids must end with -<minecraft version> (ex. -1.12.2)')
-                    continue
-                }
-
                 // Read server meta
                 const serverMeta = JSON.parse(await readFile(resolvePath(absoluteServerRoot, this.SERVER_META_FILE), 'utf-8')) as ServerMeta
-                const minecraftVersion = new MinecraftVersion(match[2])
+                const resolvedIdentity = this.resolveServerIdentity(file, serverMeta)
+                if (resolvedIdentity == null) {
+                    this.logger.warn(`Skipping server directory ${file}, Minecraft version could not be resolved.`)
+                    this.logger.warn('Use folder name format "<id>-<minecraft version>" or set servermeta.minecraftVersion.')
+                    continue
+                }
+                const minecraftVersion = new MinecraftVersion(resolvedIdentity.minecraftVersion)
                 const untrackedFiles: UntrackedFilesOption[] = serverMeta.untrackedFiles || []
 
                 let iconUrl: string = null!
@@ -268,13 +268,13 @@ export class ServerStructure extends BaseModelStructure<Server> {
                 modules.push(...fileModules)
 
                 accumulator.push({
-                    id: match[1],
+                    id: resolvedIdentity.id,
                     name: serverMeta.meta.name,
                     description: serverMeta.meta.description,
                     icon: iconUrl,
                     version: serverMeta.meta.version,
                     address: serverMeta.meta.address,
-                    minecraftVersion: match[2],
+                    minecraftVersion: resolvedIdentity.minecraftVersion,
                     ...(serverMeta.meta.discord ? {discord: serverMeta.meta.discord} : {}),
                     mainServer: serverMeta.meta.mainServer,
                     autoconnect: serverMeta.meta.autoconnect,
@@ -287,6 +287,41 @@ export class ServerStructure extends BaseModelStructure<Server> {
             }
         }
         return accumulator
+    }
+
+    private resolveServerIdentity(
+        folderName: string,
+        serverMeta: ServerMeta
+    ): { id: string, minecraftVersion: string } | null {
+        const fromFolder = this.ID_REGEX.exec(folderName)
+        if (fromFolder != null) {
+            return {
+                id: fromFolder[1],
+                minecraftVersion: fromFolder[2]
+            }
+        }
+
+        if (serverMeta.minecraftVersion != null && MinecraftVersion.isMinecraftVersion(serverMeta.minecraftVersion)) {
+            this.logger.info(`Server directory ${folderName} does not end with -<minecraft version>, using servermeta.minecraftVersion.`)
+            return {
+                id: folderName,
+                minecraftVersion: serverMeta.minecraftVersion
+            }
+        }
+
+        const serverName = serverMeta.meta?.name
+        if (serverName != null) {
+            const fromName = this.MINECRAFT_VERSION_NAME_REGEX.exec(serverName)
+            if (fromName != null && MinecraftVersion.isMinecraftVersion(fromName[1])) {
+                this.logger.warn(`Server directory ${folderName} does not end with -<minecraft version>, inferred version from servermeta.meta.name.`)
+                return {
+                    id: folderName,
+                    minecraftVersion: fromName[1]
+                }
+            }
+        }
+
+        return null
     }
 
 }

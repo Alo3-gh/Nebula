@@ -18,7 +18,11 @@ export class NeoForgeModStructure extends BaseModStructure<ModsToml> {
         minecraftVersion: MinecraftVersion,
         untrackedFiles: UntrackedFilesOption[]
     ) {
-        super(absoluteRoot, relativeRoot, 'neoforgemods', baseUrl, minecraftVersion, Type.ForgeMod, untrackedFiles)
+        // NeoForge 1.20.3+ no longer supports loading distribution mods through
+        // FML's Maven mod list. Keep these as managed files so Helios places
+        // them in the instance's normal `mods` directory, where NeoForge's
+        // standard mods-folder locator can discover service and JarJar mods.
+        super(absoluteRoot, relativeRoot, 'neoforgemods', baseUrl, minecraftVersion, Type.File, untrackedFiles)
     }
 
     public getLoggerName(): string {
@@ -27,29 +31,36 @@ export class NeoForgeModStructure extends BaseModStructure<ModsToml> {
 
     protected async getModuleId(name: string, _path: string): Promise<string> {
         const fmData = await this.getModMetadata(name, _path)
-        return this.generateMavenIdentifier(this.getDefaultGroup(), fmData.mods[0].modId, fmData.mods[0].version)
+        // Type.File modules are installed by artifact.path and are not resolved
+        // through Maven. Do not use TypeMetadata's undefined File extension.
+        return `generated.neoforge:${fmData.mods[0].modId}:${fmData.mods[0].version}`
     }
 
     protected async getModuleName(name: string, _path: string): Promise<string> {
         return capitalize((await this.getModMetadata(name, _path)).mods[0].displayName)
     }
 
-    protected processZip(zip: StreamZip, name: string, _path: string): ModsToml {
+    protected processZip(zip: StreamZip, name: string): ModsToml {
         let raw: Buffer | undefined
         try {
-            raw = zip.entryDataSync('META-INF/mods.toml')
+            raw = zip.entryDataSync('META-INF/neoforge.mods.toml')
         } catch {
-            // ignored
+            // Older cross-loader builds may still use the Forge metadata name.
+            try {
+                raw = zip.entryDataSync('META-INF/mods.toml')
+            } catch {
+                // ignored
+            }
         }
 
         if (raw) {
             try {
                 this.modMetadata[name] = toml.parse(raw.toString()) as ModsToml
             } catch {
-                this.logger.error(`NeoForgeMod ${name} contains an invalid mods.toml file.`)
+                this.logger.error(`NeoForgeMod ${name} contains an invalid NeoForge mod metadata file.`)
             }
         } else {
-            this.logger.error(`NeoForgeMod ${name} does not contain mods.toml file.`)
+            this.logger.warn(`NeoForgeMod ${name} does not contain NeoForge mod metadata; using filename fallback.`)
         }
 
         const crudeInference = this.attemptCrudeInference(name)
@@ -66,7 +77,7 @@ export class NeoForgeModStructure extends BaseModStructure<ModsToml> {
             }
         }
 
-        for(const entry of this.modMetadata[name]!.mods) {
+        for(const entry of this.modMetadata[name].mods) {
             if (entry.version === '${file.jarVersion}') {
                 let version = crudeInference.version
                 try {
@@ -84,6 +95,10 @@ export class NeoForgeModStructure extends BaseModStructure<ModsToml> {
             }
         }
 
-        return this.modMetadata[name]!
+        return this.modMetadata[name]
+    }
+
+    protected async getModulePath(name: string): Promise<string> {
+        return `mods/${name}`
     }
 }

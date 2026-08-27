@@ -44,6 +44,7 @@ function inferJavaOptions(version: string): NonNullable<Server['javaOptions']> {
 export function getDefaultServerMeta(id: string, version: string, options?: ServerMetaOptions): ServerMeta {
 
     const servMeta: ServerMeta = {
+        minecraftVersion: version,
         meta: {
             version: options?.version ?? '1.0.0',
             name: `${id} (Minecraft ${version})`,
@@ -89,6 +90,12 @@ export function getDefaultServerMeta(id: string, version: string, options?: Serv
 }
 
 export interface ServerMeta {
+
+    /**
+     * Explicit Minecraft version for this server.
+     * If present, Nebula can resolve server folders which do not end with -<minecraft version>.
+     */
+    minecraftVersion?: string
 
     /**
      * Server metadata to be forwarded to the distribution file.
